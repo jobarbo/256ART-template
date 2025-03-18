@@ -1,171 +1,3 @@
-// Avoid modifying this file
-// It emulates data coming from chain and injects the artwork.js file
-
-let search = new URLSearchParams(window.location.search);
-
-let genHash = (size) => [...Array(size)].map(() => Math.floor(Math.random() * 16).toString(16)).join("");
-let hash = search.get("hash") || "0x" + genHash(64);
-
-// Generate a random Ethereum address
-let genRandomAddress = () => "0x" + [...Array(40)].map(() => Math.floor(Math.random() * 16).toString(16)).join("");
-
-// Additional fields with default values
-let ownerOfPiece = search.get("ownerOfPiece") || genRandomAddress();
-let blockHash = search.get("blockHash") || "0x" + genHash(64);
-let blockNumber = search.get("blockNumber") || Math.floor(Math.random() * 10000000);
-let prevrandao = search.get("prevrandao") || Math.floor(Number.MAX_SAFE_INTEGER * Math.random());
-let totalSupply = search.get("totalSupply") || Math.floor(Math.random() * 256);
-let balanceOfOwner = search.get("balanceOfOwner") || Math.floor(Math.random() * totalSupply);
-let tokenId = search.get("tokenId") || Math.floor(Math.random() * totalSupply);
-let blockTimestamp = search.get("blockTimestamp") || Math.floor(Date.now() / 1000);
-let blockBaseFee = search.get("blockBaseFee") || Math.floor(Math.random() * 1e9); // Example: up to 1 Gwei
-let blockCoinbase = search.get("blockCoinbase") || genRandomAddress();
-let ethBalanceOfOwner = search.get("ethBalanceOfOwner") || Math.floor(Math.random() * 1e18); // Up to 1 ETH
-
-// Main input data
-let inputData = {
-	tokenId: tokenId,
-	hash: hash,
-	ownerOfPiece: ownerOfPiece,
-	blockHash: blockHash,
-	blockNumber: blockNumber,
-	prevrandao: prevrandao,
-	totalSupply: totalSupply,
-	balanceOfOwner: balanceOfOwner,
-
-	// Including the new fields
-	blockTimestamp: blockTimestamp,
-	blockBaseFee: blockBaseFee,
-	blockCoinbase: blockCoinbase,
-	ethBalanceOfOwner: ethBalanceOfOwner,
-};
-
-/**
- * Function to display error messages on the screen.
- * Creates an error container if it doesn't exist and appends the message.
- * @param {string} message - The error message to display.
- */
-/**
- * Function to display error messages on the screen.
- * Creates an error container if it doesn't exist and appends the message along with helpful tips.
- * @param {string} message - The error message to display.
- */
-function displayError(message) {
-	let errorDiv = document.getElementById("error-container");
-	let errorMsg;
-	if (!errorDiv) {
-		errorDiv = document.createElement("div");
-		errorDiv.id = "error-container";
-		// Styling the error container for visibility
-		errorDiv.style.display = "flex";
-		errorDiv.style.alignItems = "center";
-		errorDiv.style.justifyContent = "center";
-		errorDiv.style.top = "0";
-		errorDiv.style.left = "0";
-		errorDiv.style.width = "100%";
-		errorDiv.style.height = "100%";
-		errorDiv.style.color = "white";
-		errorDiv.style.backgroundColor = "rgba(0, 0, 0, 0.8)"; // Added background for better readability
-		errorDiv.style.padding = "20px";
-		errorDiv.style.boxShadow = "0 2px 4px rgba(0,0,0,0.2)";
-		errorDiv.style.zIndex = "1000";
-		errorDiv.style.fontFamily = "Arial, sans-serif";
-		errorDiv.style.fontSize = "16px";
-		errorDiv.style.textAlign = "center";
-		errorDiv.style.flexDirection = "column"; // Allow multiple lines
-
-		errorMsg = document.createElement("p");
-		errorMsg.style.marginBottom = "10px";
-		errorDiv.appendChild(errorMsg);
-
-		const tipMsg = document.createElement("p");
-		tipMsg.style.fontStyle = "italic";
-		tipMsg.style.fontSize = "14px";
-		tipMsg.innerText = "Consider using parseInt(), parseFloat(), or comparing to 'true' for boolean values in your script.";
-		errorDiv.appendChild(tipMsg);
-
-		document.body.appendChild(errorDiv);
-	} else {
-		errorMsg = errorDiv.querySelector("p");
-	}
-	errorMsg.innerText = message;
-}
-
-(async function () {
-	try {
-		// Fetch traits data from the local JSON file
-		const response = await fetch("../scripts/traits.json");
-		if (!response.ok) {
-			throw new Error(`Failed to fetch traits.json: ${response.status} ${response.statusText}`);
-		}
-		const traitsData = await response.json();
-
-		const traits = traitsData;
-
-		// Generate random numbers (as on chain)
-		function generateRandomNumbers(seed, timesToCall) {
-			let randNumbers = [];
-			for (let i = 0; i < timesToCall; i++) {
-				let finalSeed = ethers.BigNumber.from(seed).add(i);
-				let keccak = ethers.utils.keccak256(finalSeed._hex.toString());
-				let r = ethers.BigNumber.from(keccak).mod(10000);
-				randNumbers[i] = parseInt(r);
-			}
-			return randNumbers;
-		}
-
-		let randNumbers = generateRandomNumbers(hash, Object.keys(traits).length);
-
-		// Add traits to inputData based on generated random numbers
-		const traitKeys = Object.keys(traits);
-		for (let j = 0; j < traitKeys.length; j++) {
-			let r = randNumbers[j];
-			let traitArray = traits[traitKeys[j]];
-			let traitAssigned = false;
-
-			for (let k = 0; k < traitArray.length; k++) {
-				if (r < traitArray[k].weight) {
-					const traitValue = traitArray[k].trait_value;
-					const traitDescription = traitArray[k].trait_description;
-
-					// Type checks for trait_value and trait_description
-					if (typeof traitValue !== "string") {
-						throw new TypeError(`trait_value for trait "${traitKeys[j]}" must be a string (required for on-chain storage). Received type: ${typeof traitValue}`);
-					}
-
-					if (typeof traitDescription !== "string") {
-						throw new TypeError(`trait_description for trait "${traitKeys[j]}" must be a string (required for on-chain storage). Received type: ${typeof traitDescription}`);
-					}
-
-					inputData[traitKeys[j]] = {value: traitValue, description: traitDescription};
-					traitAssigned = true;
-					break;
-				}
-			}
-
-			// Optionally, handle case where no trait was assigned
-			if (!traitAssigned) {
-				throw new Error(`No valid trait found for trait category "${traitKeys[j]}" with random number ${r}.`);
-			}
-		}
-
-		// Log inputData for easier debugging
-		console.log(inputData);
-
-		// Load artwork.js after inputData.js has finished executing
-		const artworkScript = document.createElement("script");
-		artworkScript.src = window.p5 ? "../scripts/artwork-p5.js" : "../scripts/artwork.js";
-		document.body.appendChild(artworkScript);
-	} catch (error) {
-		console.error("Error processing traits data:", error);
-		// Display the error on the screen
-		displayError(`Error: ${error.message}`);
-		// Optionally, you can prevent further script execution or provide fallback behavior here
-	}
-})();
-
-// CUSTOM FUNCTIONS
-
 // 256ART VAR
 // will hold the Random class instance
 
@@ -212,100 +44,6 @@ class Random {
 
 // Initiate Random class
 
-//* COMPOSITION TYPE DEFINITION *//
-// CATEGORISE VARIABILITY INSIDE ARRAYS //
-
-const complexityArr = [
-	["1", 20],
-	["2", 70],
-	["3", 5],
-	["4", 2],
-	["5", 2],
-	["6", 1],
-];
-
-const themeArr = [
-	["bright", 0],
-	["dark", 100],
-];
-
-const compositionArr = [
-	["semiconstrained", 0],
-	["constrained", 0],
-	["compressed", 0],
-	["unconstrained", 100],
-];
-
-const colorModeArr = [
-	["monochrome", 100],
-	["fixed", 0],
-	["dynamic", 0],
-	["iridescent", 0],
-];
-
-const strokestyleArr = [
-	["thin", 100],
-	["regular", 0],
-	["bold", 0],
-];
-
-const clampvalueArr = [
-	["0.0000015,0.25,0.25,0.0000015", 50],
-	["0.0000015,0.025,0.025,0.0000015", 50],
-	["0.00015,0.015,0.015,0.00015", 50],
-	["0.15,0.00000015,0.15,0.0000015", 50],
-	["0.0015,0.000015,0.0015,0.000015", 50],
-	["0.05,0.05,0.05,0.05", 50],
-	["0.15,0.15,0.15,0.15", 50],
-	["0.015,0.015,0.015,0.015", 50],
-	["0.0015,0.0015,0.0015,0.0015", 50],
-	["0.0000015,0.0000015,0.0000015,0.0000015", 50],
-];
-
-// all input parameters are optional, they will be chosen at random if not passed into the function
-function generate_composition_params(complexity, theme, composition, colormode, strokestyle, clampvalue) {
-	// SET DEFAULTS IF NOT PASSED IN
-	if (complexity === undefined) {
-		complexity = weighted_choice(complexityArr);
-	}
-
-	if (theme === undefined) {
-		theme = weighted_choice(themeArr);
-	}
-
-	if (composition === undefined) {
-		composition = weighted_choice(compositionArr);
-	}
-
-	if (colormode === undefined) {
-		colormode = weighted_choice(colorModeArr);
-	}
-
-	if (strokestyle === undefined) {
-		strokestyle = weighted_choice(strokestyleArr);
-	}
-
-	if (clampvalue === undefined) {
-		clampvalue = weighted_choice(clampvalueArr);
-	}
-
-	//* EXCEPTIONS AND OVER-RIDES *//
-	// if necessary, add exceptions and over-rides here
-
-	//* PACK PARAMETERS INTO OBJECT *//
-	var composition_params = {
-		complexity: complexity,
-		theme: theme,
-		composition: composition,
-		colormode: colormode,
-		strokestyle: strokestyle,
-		clampvalue: clampvalue,
-	};
-
-	//* RETURN PARAMETERS *//
-	return composition_params;
-}
-
 // MY UTILS
 
 let noiseCanvasWidth = 1;
@@ -329,32 +67,26 @@ let R = new Random();
 let L = (x, y) => (x * x + y * y) ** 0.5; // Elements by Euclid 300 BC
 let k = (a, b) => (a > 0 && b > 0 ? L(a, b) : a > b ? a : b);
 
-fx = R;
-fxhash = inputData.hash;
-fxrand = R.random_dec;
-rand = fxrand;
-features = "Need to link features with the 256art system";
-seed = parseInt(R.random_dec() * 10000000);
-
 // Definitions ===========================================================
 ({sin, cos, imul, PI} = Math);
 TAU = PI * 2;
 F = (N, f) => [...Array(N)].map((_, i) => f(i)); // for loop / map / list function
 
+// A seeded PRNG =========================================================
+//seed = 'das9d7as9d7as'; // random seed]
+//seed = Math.random() * 2 ** 32;
+
 S = Uint32Array.of(9, 7, 5, 3); // PRNG state
-let RF = (x) => R.random_int(0, x);
-[...(seed + "ThxPiter")].map((c) => RF((S[3] ^= c.charCodeAt() * 23205))); // seeding the random function
+[...(seed + "ThxPiter")].map((c) => R((S[3] ^= c.charCodeAt() * 23205))); // seeding the random function
 
 // general noise definitions =============================================
 KNUTH = 0x9e3779b1; // prime number close to PHI * 2 ** 32
-NSEED = RF(2 ** 32); // noise seed, random 32 bit integer
+NSEED = R(2 ** 32); // noise seed, random 32 bit integer
 // 3d noise grid function
 ri = (i, j, k) => ((i = imul((((i & 1023) << 20) | ((j & 1023) << 10) | ((i ^ j ^ k) & 1023)) ^ NSEED, KNUTH)), (i <<= 3 + (i >>> 29)), (i >>> 1) / 2 ** 31 - 0.5);
 
-//* PARAMS *//
-
 // 3D value noise function ===============================================
-no = F(99, (_) => RF(1024)); // random noise offsets
+no = F(99, (_) => R(1024)); // random noise offsets
 
 n3 = (
 	x,
@@ -384,11 +116,11 @@ n3 = (
 );
 
 // 2D value noise function ===============================================
-na = F(99, (_) => RF(TAU)); // random noise angles
+na = F(99, (_) => R(TAU)); // random noise angles
 ns = na.map(sin);
 nc = na.map(cos); // sin and cos of those angles
-nox = F(99, (_) => RF(1024)); // random noise x offset
-noy = F(99, (_) => RF(1024)); // random noise y offset
+nox = F(99, (_) => R(1024)); // random noise x offset
+noy = F(99, (_) => R(1024)); // random noise y offset
 
 n2 = (
 	x,
